@@ -4,9 +4,11 @@
 extern "C" {
 #endif
 
-#include "esp_err.h"
 #include <stdint.h>
+#include <stdbool.h>
+#include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+#include "esp_wifi_types.h"
 
 /**
  * @brief 初始化 Wi-Fi（只会执行一次）
@@ -19,9 +21,14 @@ esp_err_t wifi_init_once(void);
 void wifi_scan_once_and_print_sorted(void);
 
 /**
+ * @brief 自动连接上一次保存的 AP（NVS 记录）
+ */
+esp_err_t wifi_auto_connect_last(void);
+
+/**
  * @brief 根据 scan 的 1-based 索引连接（conn <index> <psw>）
  * @param idx_1based  1..N
- * @param psw_opt     NULL 或 "" 表示空密码（用于开放 AP）
+ * @param psw_opt     NULL 或 "" 表示沿用已保存密码（或空密码）
  */
 esp_err_t wifi_connect_by_index(int idx_1based, const char *psw_opt);
 
@@ -31,15 +38,32 @@ esp_err_t wifi_connect_by_index(int idx_1based, const char *psw_opt);
 uint16_t wifi_get_scan_cache_count(void);
 
 /**
- * @brief 启动一个后台扫描任务（可选）
- *        等价于你原来的 wifi_bg_task：delay 一下然后扫一次
+ * @brief 启动后台扫描任务：启动后扫描一次，然后尝试自动连接上次 WiFi
  */
 esp_err_t wifi_start_bg_scan_task(const char *task_name, uint32_t stack_words, UBaseType_t prio);
 
 /**
- * @brief 启动 UART 命令任务（可选）：支持 scan/conn/help
+ * @brief 启动 UART 命令任务：支持 scan/conn/info/time/disconn/help
  */
 esp_err_t wifi_start_cmd_task(const char *task_name, uint32_t stack_words, UBaseType_t prio);
+
+/**
+ * @brief 清除上次保存的 AP（NVS: ssid/bssid/auth），并可选清除 flash 里保存的 STA 配置
+ * @param clear_wifi_flash_cfg  true: 同时清空 esp_wifi 保存的 STA ssid/psw
+ */
+esp_err_t wifi_forget_last(bool clear_wifi_flash_cfg);
+
+/**
+ * @brief 直接用 SSID+密码连接（不依赖 scan 缓存）
+ */
+esp_err_t wifi_connect_by_ssid(const char *ssid, const char *psw);
+
+/**
+ * @brief 打印当前记忆（NVS last AP）和当前 STA 配置（esp_wifi 保存的）
+ */
+void wifi_print_memory(void);
+
+esp_err_t wifi_reconnect_saved(void);
 
 #ifdef __cplusplus
 }
