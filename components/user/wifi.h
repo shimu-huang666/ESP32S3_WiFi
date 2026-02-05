@@ -43,7 +43,7 @@ esp_err_t wifi_init_once(void);
 /**
  * @brief 扫描一次 + 按 RSSI 从强到弱排序 + 打印结果，并更新内部缓存（索引顺序=打印顺序）
  */
-void wifi_scan_once_and_print_sorted(void);
+char** wifi_scan_once_and_print_sorted(void);
 
 /**
  * @brief 自动连接上一次保存的 AP（NVS 记录）

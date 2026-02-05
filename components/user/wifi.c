@@ -361,11 +361,11 @@ esp_err_t wifi_init_once(void)
     return ESP_OK;
 }
 
-void wifi_scan_once_and_print_sorted(void)
+char** wifi_scan_once_and_print_sorted(void)
 {
     if (wifi_init_once() != ESP_OK) {
         logi_both(TAG_SCAN, "wifi init failed");
-        return;
+        return NULL;
     }
 
     memset(s.ap_cache, 0, sizeof(s.ap_cache));
@@ -382,7 +382,7 @@ void wifi_scan_once_and_print_sorted(void)
     esp_err_t err = esp_wifi_scan_start(&scan_cfg, true);
     if (err != ESP_OK) {
         logi_both(TAG_SCAN, "scan start failed: %s", esp_err_to_name(err));
-        return;
+        return NULL;
     }
 
     uint16_t ap_count = 0;
@@ -406,10 +406,16 @@ void wifi_scan_once_and_print_sorted(void)
               "No", "SSID", "CH", "AUTH", "PAIR", "GROUP", "BSSID", "RSSI");
     logi_both(TAG_SCAN, "------------------------------------------------------------------------------------------------------");
 
+    static char* ssid_list[10];  // 改为静态数组
     for (int i = 0; i < number; i++) {
         char bssid[18];
         bssid_to_str(ap_info[i].bssid, bssid);
-
+        // 为每个SSID分配内存
+        ssid_list[i] = malloc(33);  // SSID最大32字符+1结束符
+        if (ssid_list[i]) {
+            strncpy(ssid_list[i], (char *)ap_info[i].ssid, 32);
+            ssid_list[i][32] = '\0';  // 确保以\0结尾
+        }
         logi_both(TAG_SCAN, "%-3d %-32s %-3d %-10s %-9s %-9s %-17s %-5d",
                   i + 1,
                   (char *)ap_info[i].ssid,
@@ -420,9 +426,16 @@ void wifi_scan_once_and_print_sorted(void)
                   bssid,
                   ap_info[i].rssi);
     }
-    logi_both(TAG_SCAN, "------------------------------------------------------------------------------------------------------");
-}
 
+    // 初始化剩余的指针为NULL
+    for (int i = number; i < 10; i++) {
+        ssid_list[i] = NULL;
+    }
+
+    logi_both(TAG_SCAN, "------------------------------------------------------------------------------------------------------");
+
+    return ssid_list;
+}
 esp_err_t wifi_connect_by_index(int idx_1based, const char *psw_opt)
 {
     esp_err_t err = wifi_init_once();
