@@ -10,27 +10,7 @@
  */
 
 #include "wifi.h"
-#include "uart.h"   // uart_app_write / uart_app_get_cmd_queue / uart_cmd_msg_t
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <time.h>
-#include <sys/time.h>
-
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-
-#include "esp_wifi.h"
-#include "esp_log.h"
-#include "esp_event.h"
-#include "esp_netif.h"
-#include "esp_err.h"
-
-#include "nvs.h"
-#include "nvs_flash.h"
-#include "esp_sntp.h"
 
 /* -------------------------- Config -------------------------- */
 
@@ -55,8 +35,7 @@
 
 static const char *TAG_WIFI = "wifi";
 static const char *TAG_SCAN = "scan";
-static const char *TAG_CMD  = "cmd";
-static const char *TAG_TIME = "time";
+
 
 /* -------------------------- Context -------------------------- */
 
@@ -80,21 +59,7 @@ static wifi_ctx_t s = {0};
 
 /* -------------------------- Logging -------------------------- */
 
-static void logi_both(const char *tag, const char *fmt, ...)
-{
-    char buf[192];
 
-    va_list ap;
-    va_start(ap, fmt);
-    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-
-    if (n <= 0) return;
-
-    ESP_LOGI(tag, "%s", buf);
-    uart_app_write(buf, strnlen(buf, sizeof(buf)));
-    uart_app_write("\r\n", 2);
-}
 
 /* -------------------------- Helpers -------------------------- */
 
@@ -218,7 +183,7 @@ static int cache_find_by_bssid(const uint8_t bssid[6])
 
 /* -------------------------- WiFi info -------------------------- */
 
-static void wifi_print_info(void)
+void wifi_print_info(void)
 {
     wifi_ap_record_t ap;
     esp_err_t err_ap = esp_wifi_sta_get_ap_info(&ap);
@@ -314,43 +279,6 @@ void wifi_print_memory(void)
     }
 }
 
-/* -------------------------- SNTP time -------------------------- */
-
-static bool time_is_valid(void)
-{
-    time_t now = 0;
-    time(&now);
-    return (now > 1577836800); // 2020-01-01
-}
-
-static void print_time_now(void)
-{
-    time_t now;
-    struct tm timeinfo;
-
-    time(&now);
-    localtime_r(&now, &timeinfo);
-
-    char buf[64];
-    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &timeinfo);
-    logi_both(TAG_TIME, "now: %s (UTC+8)", buf);
-}
-
-static void time_sync_init(void)
-{
-    setenv("TZ", "CST-8", 1);
-    tzset();
-
-    if (esp_sntp_enabled()) {
-        ESP_LOGI(TAG_TIME, "SNTP already running, skip init.");
-        return;
-    }
-
-    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_init();
-    ESP_LOGI(TAG_TIME, "SNTP init done.");
-}
 
 /* -------------------------- Event handler -------------------------- */
 
@@ -803,112 +731,13 @@ static void print_help(void)
         "reconn                 - reconnect using saved STA cfg (flash)\r\n"
         "forget                 - erase last saved wifi (NVS) and disconnect\r\n"
         "mem                    - show saved wifi memory (NVS + STA flash cfg)\r\n"
+        "mqtt [message]""       - mqtt send message                                                 "
         "help                   - show help\r\n"
 
         ;
     uart_app_write(h, strlen(h));
 }
 
-static void cmd_task(void *arg)
-{
-    (void)arg;
-
-    QueueHandle_t q = uart_app_get_cmd_queue();
-    uart_cmd_msg_t msg;
-
-    uart_app_write("\r\n==== UART CMD READY ====\r\n", strlen("\r\n==== UART CMD READY ====\r\n"));
-    print_help();
-    uart_app_write("========================\r\n", strlen("========================\r\n"));
-
-    while (1) {
-        if (xQueueReceive(q, &msg, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI(TAG_CMD, "CMD: %s", msg.line);
-
-            uart_app_write(">", 1);
-            uart_app_write(msg.line, strlen(msg.line));
-            uart_app_write("\r\n", 2);
-
-            if (strcmp(msg.line, "scan") == 0) {
-                uart_app_write("Scanning...\r\n", strlen("Scanning...\r\n"));
-                wifi_scan_once_and_print_sorted();
-                uart_app_write("Scan done\r\n", strlen("Scan done\r\n"));
-                continue;
-            }
-            if (strncmp(msg.line, "connssid", 8) == 0) {
-                char ssid[33] = {0};
-                char psw[65]  = {0};
-                int n = sscanf(msg.line, "connssid %32s %64s", ssid, psw);
-                if (n != 2) {
-                    uart_app_write("Usage: connssid <ssid> <psw>\r\n", strlen("Usage: connssid <ssid> <psw>\r\n"));
-                } else {
-                    esp_err_t e = wifi_connect_by_ssid(ssid, psw);
-                    if (e != ESP_OK) logi_both(TAG_WIFI, "connssid failed: %s", esp_err_to_name(e));
-                }
-                continue;
-            }
-            if (strncmp(msg.line, "conn", 4) == 0) {
-                int idx = 0;
-                char psw[65] = {0}; // WPA2 password max 63
-                int n = sscanf(msg.line, "conn %d %64s", &idx, psw);
-
-                if (n <= 0) {
-                    uart_app_write("Usage: conn <index> [psw]\r\n", strlen("Usage: conn <index> [psw]\r\n"));
-                } else if (n == 1) {
-                    esp_err_t e = wifi_connect_by_index(idx, NULL);
-                    if (e != ESP_OK) logi_both(TAG_WIFI, "conn failed: %s", esp_err_to_name(e));
-                } else {
-                    esp_err_t e = wifi_connect_by_index(idx, psw);
-                    if (e != ESP_OK) logi_both(TAG_WIFI, "conn failed: %s", esp_err_to_name(e));
-                }
-                continue;
-            }
-            if (strcmp(msg.line, "reconn") == 0) {
-                esp_err_t e = wifi_reconnect_saved();
-                if (e != ESP_OK) {
-                    logi_both(TAG_WIFI, "reconn failed: %s", esp_err_to_name(e));
-                }
-                continue;
-            }
-            if (strcmp(msg.line, "info") == 0) {
-                wifi_print_info();
-                continue;
-            }
-
-            if (strcmp(msg.line, "time") == 0) {
-                if (!time_is_valid()) logi_both(TAG_TIME, "SNTP not synced yet.");
-                else print_time_now();
-                continue;
-            }
-
-            if (strcmp(msg.line, "disconn") == 0) {
-                s.manual_disconnect = true;
-                s.retry_num = 0;
-                esp_wifi_disconnect();
-                logi_both(TAG_WIFI, "WiFi disconnected (manual)!");
-                continue;
-            }
-
-            if (strcmp(msg.line, "help") == 0) {
-                print_help();
-                continue;
-            }
-
-
-            if (strcmp(msg.line, "forget") == 0) {
-                // 你也可以改成 true：同时清空 flash 里保存的 STA 配置（ssid/psw）
-                esp_err_t e = wifi_forget_last(true);
-                if (e != ESP_OK) logi_both(TAG_WIFI, "forget failed: %s", esp_err_to_name(e));
-                continue;
-            }
-            if (strcmp(msg.line, "mem") == 0) {
-                wifi_print_memory();
-                continue;
-            }
-
-            uart_app_write("Unknown cmd\r\n", strlen("Unknown cmd\r\n"));
-        }
-    }
-}
 
 /* -------------------------- bg task -------------------------- */
 
@@ -931,12 +760,3 @@ esp_err_t wifi_start_bg_scan_task(const char *task_name, uint32_t stack_words, U
            ? ESP_OK : ESP_FAIL;
 }
 
-esp_err_t wifi_start_cmd_task(const char *task_name, uint32_t stack_words, UBaseType_t prio)
-{
-    if (!task_name) task_name = "cmd_task";
-    if (stack_words == 0) stack_words = 8192;
-    if (prio == 0) prio = 10;
-
-    return (xTaskCreate(cmd_task, task_name, stack_words, NULL, prio, NULL) == pdPASS)
-           ? ESP_OK : ESP_FAIL;
-}

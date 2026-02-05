@@ -1,15 +1,5 @@
 #include "uart.h"
 
-#include <string.h>
-#include <stdlib.h>
-
-#include "freertos/task.h"
-#include "freertos/queue.h"
-
-#include "driver/uart.h"
-#include "driver/gpio.h"
-#include "esp_log.h"
-
 // ============ 内部参数 ============
 #define UART_EVT_TASK_STACK     4096
 #define UART_EVT_TASK_PRIO      12
@@ -248,7 +238,21 @@ int uart_app_read(uint8_t *buf, size_t len, TickType_t ticks_to_wait)
     if (!s_inited || !buf || len == 0) return -1;
     return uart_read_bytes(UART_APP_PORT, buf, len, ticks_to_wait);
 }
+void logi_both(const char *tag, const char *fmt, ...)
+{
+    char buf[192];
 
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    if (n <= 0) return;
+
+    ESP_LOGI(tag, "%s", buf);
+    uart_app_write(buf, strnlen(buf, sizeof(buf)));
+    uart_app_write("\r\n", 2);
+}
 void uart_app_flush_rx(void)
 {
     if (!s_inited) return;

@@ -8,6 +8,16 @@
 #include "driver/uart.h"
 #include "esp_err.h"
 
+#include <string.h>
+#include <stdlib.h>
+
+#include "freertos/task.h"
+#include "freertos/queue.h"
+
+#include "driver/uart.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
+
 /* ========================= 用户可配置区 =========================
    建议：
    - UART0 留给日志/下载/monitor
@@ -82,6 +92,7 @@ int uart_app_write(const void *data, size_t len);
  */
 int uart_app_read(uint8_t *buf, size_t len, TickType_t ticks_to_wait);
 
+void logi_both(const char *tag, const char *fmt, ...);
 /**
  * @brief 立即清空 UART RX 缓冲（用于异常恢复）
  */

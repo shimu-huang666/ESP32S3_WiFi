@@ -8,13 +8,17 @@
 2/4 实现：  从串口获取用户输入的账密，编译通过;
             增加连接wifi后显示wifi基本参数，并可以通过info指令查询；
             增加连接wifi后可获取当前时间，并可以通过time指令；
+            增加mem、forget、reconn、connssid指令
 */
 
 #include "nvs_flash.h"
 #include "esp_err.h"
+#include "esp_log.h"
+
 #include "wifi.h"
 #include "uart.h"
-#include "esp_log.h"
+#include "mqtt_app.h"
+#include "cmd.h"
 void app_main(void)
 {
     esp_err_t ret = nvs_flash_init();
@@ -27,6 +31,7 @@ void app_main(void)
 
     ESP_ERROR_CHECK(uart_app_init());
     ESP_ERROR_CHECK(wifi_init_once());
+
     esp_err_t e = wifi_auto_connect_last();
     if (e == ESP_ERR_NOT_FOUND) {
         ESP_LOGI("main", "No last wifi record yet. Please run: scan, then conn <i> <psw> once.");
@@ -40,7 +45,7 @@ void app_main(void)
     ESP_ERROR_CHECK(wifi_start_bg_scan_task(NULL, 8192, 9));
 
     // 启动 UART 命令任务
-    ESP_ERROR_CHECK(wifi_start_cmd_task(NULL, 8192, 10));
-
+    ESP_ERROR_CHECK(start_cmd_task(NULL, 8192, 10));
+    mqtt_app_init(MQTT_BROKER_URI,MQTT_SUB_TOPIC,MQTT_HB_TOPIC,MQTT_HB_PERIOD_MS,MQTT_HB_ENABLE);
     while (1) vTaskDelay(pdMS_TO_TICKS(1000));
 }

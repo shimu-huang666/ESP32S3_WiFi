@@ -10,6 +10,31 @@ extern "C" {
 #include "freertos/FreeRTOS.h"
 #include "esp_wifi_types.h"
 
+#include "time_sync.h"
+#include <stdio.h>
+#include <string.h>
+
+#include <stdlib.h>
+#include <stdarg.h>
+#include <time.h>
+#include <sys/time.h>
+
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+
+#include "esp_wifi.h"
+#include "esp_log.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "esp_err.h"
+
+#include "nvs.h"
+#include "nvs_flash.h"
+#include "esp_sntp.h"
+
+#include "uart.h"   // uart_app_write / uart_app_get_cmd_queue / uart_cmd_msg_t
+#include "mqtt_app.h"
+
 /**
  * @brief 初始化 Wi-Fi（只会执行一次）
  */
@@ -42,10 +67,6 @@ uint16_t wifi_get_scan_cache_count(void);
  */
 esp_err_t wifi_start_bg_scan_task(const char *task_name, uint32_t stack_words, UBaseType_t prio);
 
-/**
- * @brief 启动 UART 命令任务：支持 scan/conn/info/time/disconn/help
- */
-esp_err_t wifi_start_cmd_task(const char *task_name, uint32_t stack_words, UBaseType_t prio);
 
 /**
  * @brief 清除上次保存的 AP（NVS: ssid/bssid/auth），并可选清除 flash 里保存的 STA 配置
@@ -62,7 +83,7 @@ esp_err_t wifi_connect_by_ssid(const char *ssid, const char *psw);
  * @brief 打印当前记忆（NVS last AP）和当前 STA 配置（esp_wifi 保存的）
  */
 void wifi_print_memory(void);
-
+void wifi_print_info(void);
 esp_err_t wifi_reconnect_saved(void);
 
 #ifdef __cplusplus
