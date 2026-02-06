@@ -45,7 +45,13 @@ void app_main(void)
     ESP_ERROR_CHECK(wifi_start_bg_scan_task(NULL, 8192, 9));
 
     // 启动 UART 命令任务
-    ESP_ERROR_CHECK(start_cmd_task(NULL, 8192, 10));
-    mqtt_app_init(MQTT_BROKER_URI,MQTT_SUB_TOPIC,MQTT_HB_TOPIC,MQTT_HB_PERIOD_MS,MQTT_HB_ENABLE);
+     ESP_ERROR_CHECK(start_cmd_task("cmd", 4096, 5)); 
+    mqtt_app_init(
+        "mqtt://broker.emqx.io",
+        NULL,
+        "/shimu_test/hb",
+        5000,
+        false
+    );
     while (1) vTaskDelay(pdMS_TO_TICKS(1000));
 }

@@ -1,60 +1,46 @@
 #pragma once
-#include <stdbool.h>
+/*
+ * cmd.h - UART command task API
+ *
+ * This module provides:
+ *  - print_help(): print command list to UART
+ *  - cmd_task():   FreeRTOS task entry (usually started via start_cmd_task)
+ *  - start_cmd_task(): create command task
+ *
+ * Notes:
+ *  - This header assumes you are using ESP-IDF + FreeRTOS.
+ */
+
 #include <stdint.h>
-#include "esp_log.h"
 #include "esp_err.h"
-#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOS.h"   // for UBaseType_t
 
-
-#include "wifi.h"
-#include "uart.h"   // uart_app_write / uart_app_get_cmd_queue / uart_cmd_msg_t
-#include "time_sync.h"
-#include "mqtt_app.h"
-
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <time.h>
-#include <sys/time.h>
-
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
-#include "freertos/FreeRTOS.h"
-#include "esp_wifi.h"
-#include "esp_log.h"
-#include "esp_event.h"
-#include "esp_netif.h"
-#include "esp_err.h"
-
-#include "nvs.h"
-#include "nvs_flash.h"
-#include "esp_sntp.h"
-
-// #include "portmacro.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct {
-    EventGroupHandle_t ev;
-    bool inited;
-    bool connected;          // got IP
-    bool manual_disconnect;
-    int  retry_num;
-
-    esp_netif_t *sta_netif;
-
-    wifi_ap_record_t ap_cache[CONFIG_EXAMPLE_SCAN_LIST_SIZE];
-    uint16_t ap_cache_num;
-
-    esp_event_handler_instance_t h_wifi_any;
-    esp_event_handler_instance_t h_got_ip;
-} wifi_ctx_t;
-
-
+/**
+ * @brief Print all supported commands to UART.
+ */
 void print_help(void);
+
+/**
+ * @brief Command task entry. Normally you should not call this directly.
+ *        Use start_cmd_task() to create the task.
+ *
+ * @param arg Unused.
+ */
 void cmd_task(void *arg);
+
+/**
+ * @brief Start the command task.
+ *
+ * @param task_name   Task name. If NULL, default "cmd_task".
+ * @param stack_words Task stack size in *words* (not bytes). If 0, default 8192.
+ * @param prio        Task priority. If 0, default 10.
+ *
+ * @return ESP_OK if task created; ESP_FAIL otherwise.
+ */
 esp_err_t start_cmd_task(const char *task_name, uint32_t stack_words, UBaseType_t prio);
 
 #ifdef __cplusplus

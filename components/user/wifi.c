@@ -57,9 +57,6 @@ typedef struct {
 
 static wifi_ctx_t s = {0};
 
-/* -------------------------- Logging -------------------------- */
-
-
 
 /* -------------------------- Helpers -------------------------- */
 
@@ -360,12 +357,11 @@ esp_err_t wifi_init_once(void)
     ESP_LOGI(TAG_WIFI, "wifi_init_once done");
     return ESP_OK;
 }
-
-char** wifi_scan_once_and_print_sorted(void)
+void wifi_scan_once_and_print_sorted(void)
 {
     if (wifi_init_once() != ESP_OK) {
         logi_both(TAG_SCAN, "wifi init failed");
-        return NULL;
+        return;
     }
 
     memset(s.ap_cache, 0, sizeof(s.ap_cache));
@@ -379,10 +375,10 @@ char** wifi_scan_once_and_print_sorted(void)
     };
 
     ESP_LOGI(TAG_SCAN, "Start scan...");
-    esp_err_t err = esp_wifi_scan_start(&scan_cfg, true);
+    esp_err_t err = esp_wifi_scan_start(&scan_cfg, true); // block=true
     if (err != ESP_OK) {
         logi_both(TAG_SCAN, "scan start failed: %s", esp_err_to_name(err));
-        return NULL;
+        return;
     }
 
     uint16_t ap_count = 0;
@@ -399,26 +395,27 @@ char** wifi_scan_once_and_print_sorted(void)
     qsort(ap_info, number, sizeof(wifi_ap_record_t), cmp_ap_rssi_desc);
 
     s.ap_cache_num = number;
-    if (number > 0) memcpy(s.ap_cache, ap_info, number * sizeof(wifi_ap_record_t));
+    if (number > 0) {
+        memcpy(s.ap_cache, ap_info, number * sizeof(wifi_ap_record_t));
+    }
 
     logi_both(TAG_SCAN, "-------- WIFI SCAN RESULT (sorted by RSSI) --------------");
     logi_both(TAG_SCAN, "%-3s %-32s %-3s %-10s %-9s %-9s %-17s %-5s",
               "No", "SSID", "CH", "AUTH", "PAIR", "GROUP", "BSSID", "RSSI");
     logi_both(TAG_SCAN, "------------------------------------------------------------------------------------------------------");
 
-    static char* ssid_list[10];  // 改为静态数组
     for (int i = 0; i < number; i++) {
         char bssid[18];
         bssid_to_str(ap_info[i].bssid, bssid);
-        // 为每个SSID分配内存
-        ssid_list[i] = malloc(33);  // SSID最大32字符+1结束符
-        if (ssid_list[i]) {
-            strncpy(ssid_list[i], (char *)ap_info[i].ssid, 32);
-            ssid_list[i][32] = '\0';  // 确保以\0结尾
-        }
-        logi_both(TAG_SCAN, "%-3d %-32s %-3d %-10s %-9s %-9s %-17s %-5d",
+
+        // SSID 不是保证 '\0' 结尾的：做一个安全拷贝
+        char ssid[33];
+        memcpy(ssid, ap_info[i].ssid, 32);
+        ssid[32] = '\0';
+
+        logi_both(TAG_SCAN, "%-3d %-32.32s %-3d %-10s %-9s %-9s %-17s %-5d",
                   i + 1,
-                  (char *)ap_info[i].ssid,
+                  ssid,
                   ap_info[i].primary,
                   authmode_str(ap_info[i].authmode),
                   cipher_str(ap_info[i].pairwise_cipher),
@@ -427,15 +424,9 @@ char** wifi_scan_once_and_print_sorted(void)
                   ap_info[i].rssi);
     }
 
-    // 初始化剩余的指针为NULL
-    for (int i = number; i < 10; i++) {
-        ssid_list[i] = NULL;
-    }
-
     logi_both(TAG_SCAN, "------------------------------------------------------------------------------------------------------");
-
-    return ssid_list;
 }
+
 esp_err_t wifi_connect_by_index(int idx_1based, const char *psw_opt)
 {
     esp_err_t err = wifi_init_once();
@@ -759,6 +750,7 @@ static void wifi_bg_task(void *arg)
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(200));
     wifi_scan_once_and_print_sorted();
+    
     wifi_auto_connect_last();
     vTaskDelete(NULL);
 }

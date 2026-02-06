@@ -1,10 +1,16 @@
 #pragma once
 
 #include <stdbool.h>
-
+#include "lvgl_api.h"
+#include "time.h"
+#include "esp_err.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+
+esp_err_t lv_get_current_time_info(struct tm* tm_info);
+
 
 /**
  * @brief 判断当前系统时间是否已经被校准到一个“可信时间”
