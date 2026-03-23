@@ -23,16 +23,21 @@
    - UART0 留给日志/下载/monitor
    - UART1 或 UART2 做用户命令口
 */
+
+// 启用 UART0 (USB) 命令支持，可通过 idf.py monitor 发送命令
+#ifndef UART_CMD_ON_USB_ENABLED
+#define UART_CMD_ON_USB_ENABLED  1
+#endif
 #ifndef UART_APP_PORT
 #define UART_APP_PORT        UART_NUM_1
 #endif
 
 #ifndef UART_APP_TX_PIN
-#define UART_APP_TX_PIN      GPIO_NUM_43
+#define UART_APP_TX_PIN      GPIO_NUM_38
 #endif
 
 #ifndef UART_APP_RX_PIN
-#define UART_APP_RX_PIN      GPIO_NUM_44
+#define UART_APP_RX_PIN      GPIO_NUM_41
 #endif
 
 #ifndef UART_APP_BAUDRATE

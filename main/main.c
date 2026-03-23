@@ -9,8 +9,12 @@
             增加连接wifi后显示wifi基本参数，并可以通过info指令查询；
             增加连接wifi后可获取当前时间，并可以通过time指令；
             增加mem、forget、reconn、connssid指令
-*/
+2/6 实现：  增加mqtt功能，支持mqtt连接、订阅、发布等基本功能，编译通过。目前已经完成wifi相关的基本功能，并优化了代码结构。
 
+*/
+//source /home/shimu/esp/v5.4.3/esp-idf/export.sh
+//idf.py -p /dev/ttyACM0 flash monitor
+//fuser /dev/ttyACM0 2>/dev/null && echo "---" && lsof /dev/ttyACM0 2>/dev/null || echo "Cannot check port usage"
 #include "nvs_flash.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -19,6 +23,8 @@
 #include "uart.h"
 #include "mqtt_app.h"
 #include "cmd.h"
+#include "bluetooth.h"
+#include "weather.h"
 void app_main(void)
 {
     esp_err_t ret = nvs_flash_init();
@@ -32,7 +38,7 @@ void app_main(void)
     ESP_ERROR_CHECK(uart_app_init());
     ESP_ERROR_CHECK(wifi_init_once());
 
-    esp_err_t e = wifi_auto_connect_last();
+   /*  */ esp_err_t e = wifi_auto_connect_last();
     if (e == ESP_ERR_NOT_FOUND) {
         ESP_LOGI("main", "No last wifi record yet. Please run: scan, then conn <i> <psw> once.");
     } else if (e != ESP_OK) {
@@ -45,7 +51,11 @@ void app_main(void)
     ESP_ERROR_CHECK(wifi_start_bg_scan_task(NULL, 8192, 9));
 
     // 启动 UART 命令任务
-     ESP_ERROR_CHECK(start_cmd_task("cmd", 4096, 5)); 
+     ESP_ERROR_CHECK(start_cmd_task("cmd", 4096, 5));
+
+    // 启动 weather 任务
+    ESP_ERROR_CHECK(weather_start_task(8192, 5));
+
     mqtt_app_init(
         "mqtt://broker.emqx.io",
         NULL,

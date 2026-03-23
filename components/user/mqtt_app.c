@@ -15,6 +15,16 @@
 #include "mqtt_client.h"
 
 #include "uart.h"
+
+// Reduce verbose error logs from ESP-IDF internal components when WiFi is disconnected
+// Set log level to WARNING to suppress ERROR logs from these components
+#define MQTT_SUPPRESS_IDF_ERROR_LOGS 1
+
+#if MQTT_SUPPRESS_IDF_ERROR_LOGS
+#include "esp_wifi.h"
+static bool s_mqtt_connect_logged = false;
+#endif
+
 #define MQTT_APP_MAX_SUB_TOPICS 8
 #define MQTT_APP_TOPIC_MAX_LEN 128
 /* -------------------- user log helper (your existing) -------------------- */
@@ -455,7 +465,9 @@ static void mqtt_event_handler(void *handler_args,
     case MQTT_EVENT_CONNECTED:
         logi_both(TAG_mqtt, "MQTT_EVENT_CONNECTED");
         s_connected = true;
-
+#if MQTT_SUPPRESS_IDF_ERROR_LOGS
+        s_mqtt_connect_logged = false;
+#endif
         // 1) 兼容：如果 cfg 给了 sub_topic，则也加入订阅列表并订阅
         if (s_cfg.sub_topic && s_cfg.sub_topic[0]) {
             subs_add_or_update(s_cfg.sub_topic, 0);
@@ -466,7 +478,14 @@ static void mqtt_event_handler(void *handler_args,
         break;
 
     case MQTT_EVENT_DISCONNECTED:
+#if MQTT_SUPPRESS_IDF_ERROR_LOGS
+        // Only log once when first disconnected, not repeatedly
+        if (s_connected) {
+            logi_both(TAG_mqtt, "MQTT disconnected (WiFi offline or broker unreachable)");
+        }
+#else
         ESP_LOGW(TAG_mqtt, "MQTT_EVENT_DISCONNECTED");
+#endif
         s_connected = false;
         break;
 
@@ -486,7 +505,15 @@ static void mqtt_event_handler(void *handler_args,
         break;
 
     case MQTT_EVENT_ERROR:
+#if MQTT_SUPPRESS_IDF_ERROR_LOGS
+        // Only log once to avoid spamming
+        if (!s_mqtt_connect_logged) {
+            logi_both(TAG_mqtt, "MQTT connection failed (no WiFi or broker unreachable)");
+            s_mqtt_connect_logged = true;
+        }
+#else
         ESP_LOGE(TAG_mqtt, "MQTT_EVENT_ERROR");
+#endif
         break;
 
     default:
@@ -510,6 +537,14 @@ esp_err_t mqtt_app_init(const char *broker_uri,
         ESP_LOGE(TAG_mqtt, "broker_uri is NULL/empty");
         return ESP_ERR_INVALID_ARG;
     }
+
+#if MQTT_SUPPRESS_IDF_ERROR_LOGS
+    // Suppress verbose error logs from ESP-IDF internal components
+    // These components output ERROR level logs when WiFi is disconnected
+    esp_log_level_set("esp-tls", ESP_LOG_WARN);        // Suppress "couldn't get hostname" errors
+    esp_log_level_set("transport_base", ESP_LOG_WARN); // Suppress "Failed to open new connection" errors
+    esp_log_level_set("mqtt_client", ESP_LOG_WARN);    // Suppress "Error transport connect" errors
+#endif
 
     mqtt_app_cfg_t cfg = {
         .broker_uri   = broker_uri,

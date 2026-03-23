@@ -16,6 +16,7 @@
 #include "wifi.h"
 #include "wifi_service.h"
 #include "mqtt_app.h"
+#include "weather.h"
 // 你已有的时间函数（如果你有 time_sync.h 就 include；没有就保持 extern）
 extern bool time_is_valid(void);
 extern void print_time_now(void);
@@ -137,6 +138,7 @@ void print_help(void)
         "  mqtt hb <on|off>          - heartbeat on/off\r\n"
         "  mqttsend [message]        - publish message to MQTT_SUB_TOPIC\r\n"
         "\r\n"
+        "weather [city]             - get weather (auto location or specified city)\r\n"
         "help                       - show help\r\n";
     uart_app_write(h, strlen(h));
 }
@@ -334,6 +336,34 @@ void cmd_task(void *arg)
             else logi_both(TAG_WIFI, "scan req failed: %s", esp_err_to_name(e));
             continue;
         }
+
+        /* -------- weather [city]：投递请求，立刻返回 -------- */
+        if (strncmp(msg.line, "weather", 7) == 0) {
+            char *city = NULL;
+            if (msg.line[7] == ' ') {
+                city = msg.line + 8;
+                /* 去除尾部空格 */
+                int len = strlen(city);
+                while (len > 0 && city[len-1] == ' ') {
+                    city[--len] = '\0';
+                }
+            } else if (msg.line[7] != '\0') {
+                /* 不是 weather 开头，跳过 */
+                goto not_weather;
+            }
+
+            if (city && city[0]) {
+                weather_request_city(city);
+                char resp[96];
+                snprintf(resp, sizeof(resp), "Weather requested for: %s\r\n", city);
+                uart_app_write(resp, strlen(resp));
+            } else {
+                weather_request();
+                uart_app_write("Weather requested (auto location)\r\n", strlen("Weather requested (auto location)\r\n"));
+            }
+            continue;
+        }
+        not_weather:
 
         /* -------- connssid：投递请求 -------- */
         if (strncmp(msg.line, "connssid", 8) == 0) {

@@ -1,4 +1,5 @@
 #include "uart.h"
+#include <stdio.h>
 
 // ============ 内部参数 ============
 #define UART_EVT_TASK_STACK     4096
@@ -15,6 +16,13 @@ static int s_inited = 0;
 // 行缓冲（跨 UART_DATA 事件累计）
 static char s_line_buf[UART_CMD_MAX_LEN];
 static int  s_line_len = 0;
+
+#if UART_CMD_ON_USB_ENABLED
+// USB (stdin) 轮询任务
+static TaskHandle_t  s_usb_poll_task  = NULL;
+static char s_usb_line_buf[UART_CMD_MAX_LEN];
+static int  s_usb_line_len = 0;
+#endif
 
 static void push_line_to_cmd_queue(void)
 {
@@ -34,7 +42,7 @@ static void push_line_to_cmd_queue(void)
     // 空白行丢弃
     if (msg.line[0] == '\0') return;
 
-    // 队列满：这里选择“丢弃新命令”，避免阻塞 UART 事件任务
+    // 队列满：这里选择”丢弃新命令”，避免阻塞 UART 事件任务
     (void)xQueueSend(s_cmd_queue, &msg, 0);
 }
 
@@ -128,6 +136,46 @@ static void uart_event_task(void *arg)
     vTaskDelete(NULL);
 }
 
+#if UART_CMD_ON_USB_ENABLED
+// stdin 轮询任务（用于 USB CDC 输入）
+static void usb_poll_task(void *arg)
+{
+    (void)arg;
+    int c;
+
+    ESP_LOGI(TAG, "USB stdin poll task started");
+
+    while (1) {
+        c = getchar();  // 从 stdin 读取（通过 USB CDC）
+        if (c == EOF) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+
+        // 兼容 CRLF
+        if (c == '\r') continue;
+
+        if (c == '\n') {
+            // 行结束，推入命令队列
+            if (s_usb_line_len > 0 && s_cmd_queue) {
+                uart_cmd_msg_t msg;
+                int n = (s_usb_line_len < UART_CMD_MAX_LEN - 1) ? s_usb_line_len : UART_CMD_MAX_LEN - 1;
+                memcpy(msg.line, s_usb_line_buf, n);
+                msg.line[n] = '\0';
+                xQueueSend(s_cmd_queue, &msg, 0);
+            }
+            s_usb_line_len = 0;
+            continue;
+        }
+
+        // 普通字符入缓冲
+        if (s_usb_line_len < UART_CMD_MAX_LEN - 1) {
+            s_usb_line_buf[s_usb_line_len++] = (char)c;
+        }
+    }
+}
+#endif
+
 esp_err_t uart_app_init(void)
 {
     if (s_inited) return ESP_ERR_INVALID_STATE;
@@ -180,6 +228,19 @@ esp_err_t uart_app_init(void)
 
     s_line_len = 0;
     s_inited = 1;
+
+#if UART_CMD_ON_USB_ENABLED
+    // 启动 stdin 轮询任务（用于 USB CDC 输入，不需要安装 UART 驱动）
+    s_usb_line_len = 0;
+    BaseType_t ok_usb = xTaskCreate(usb_poll_task, "usb_poll", 2048,
+                                   NULL, UART_EVT_TASK_PRIO, &s_usb_poll_task);
+    if (ok_usb == pdPASS) {
+        ESP_LOGI(TAG, "USB (stdin) command input enabled");
+    } else {
+        ESP_LOGW(TAG, "USB poll task create failed");
+    }
+#endif
+
     ESP_LOGI(TAG, "init ok: port=%d tx=%d rx=%d baud=%d",
              (int)UART_APP_PORT, (int)UART_APP_TX_PIN, (int)UART_APP_RX_PIN, UART_APP_BAUDRATE);
     return ESP_OK;
@@ -208,6 +269,14 @@ esp_err_t uart_app_deinit(void)
         vTaskDelete(s_evt_task);
         s_evt_task = NULL;
     }
+
+#if UART_CMD_ON_USB_ENABLED
+    if (s_usb_poll_task) {
+        vTaskDelete(s_usb_poll_task);
+        s_usb_poll_task = NULL;
+    }
+    s_usb_line_len = 0;
+#endif
 
     if (s_cmd_queue) {
         vQueueDelete(s_cmd_queue);

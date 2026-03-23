@@ -10,6 +10,7 @@
  */
 
 #include "wifi.h"
+#include "bluetooth.h"
 
 
 /* -------------------------- Config -------------------------- */
@@ -721,6 +722,11 @@ uint16_t wifi_get_scan_cache_count(void)
     return s.ap_cache_num;
 }
 
+bool wifi_is_connected(void)
+{
+    return s.connected;
+}
+
 /* -------------------------- CLI task -------------------------- */
 
 static void print_help(void)
@@ -750,7 +756,21 @@ static void wifi_bg_task(void *arg)
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(200));
     wifi_scan_once_and_print_sorted();
-    
+
+    // Bluetooth scan after wifi scan
+    ESP_LOGI(TAG_WIFI, "Starting Bluetooth scan...");
+    esp_err_t bt_ret = bluetooth_init();
+    if (bt_ret == ESP_OK) {
+        bt_ret = bluetooth_scan_start(5); // 5 seconds scan
+        if (bt_ret == ESP_OK) {
+            bluetooth_print_device_list();
+        } else {
+            ESP_LOGW(TAG_WIFI, "Bluetooth scan failed: %s", esp_err_to_name(bt_ret));
+        }
+    } else {
+        ESP_LOGW(TAG_WIFI, "Bluetooth init failed: %s", esp_err_to_name(bt_ret));
+    }
+
     wifi_auto_connect_last();
     vTaskDelete(NULL);
 }

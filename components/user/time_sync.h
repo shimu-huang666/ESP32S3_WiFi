@@ -1,19 +1,16 @@
 #pragma once
 
 #include <stdbool.h>
-#include "lvgl_api.h"
-#include "time.h"
+#include <time.h>
 #include "esp_err.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-esp_err_t lv_get_current_time_info(struct tm* tm_info);
-
-
 /**
- * @brief 判断当前系统时间是否已经被校准到一个“可信时间”
+ * @brief 判断当前系统时间是否已经被校准到一个"可信时间"
  * @return true: 时间有效(>=2020-01-01)；false: 仍是默认/未同步
  */
 bool time_is_valid(void);
